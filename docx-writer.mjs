@@ -41,11 +41,13 @@ const mono = { ascii: MONO, hAnsi: MONO, cs: MONO, eastAsia: MONO };
 const grey = (fill) => ({ type: ShadingType.CLEAR, fill, color: "auto" });
 
 // ---------- math: TeX -> OMML (Word-native equations) through pandoc ----------
-function texToOmml(items) {
-  if (!items.length) return [];
+let pandocMissing = false;
+
+// One pandoc call for a list of equations; null if anything about it fails.
+async function pandocBatch(items) {
   const tmp = path.join(
     os.tmpdir(),
-    `rtlify-${process.pid}-${Date.now()}.docx`,
+    `rtlify-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`,
   );
   try {
     const md = items
@@ -55,39 +57,56 @@ function texToOmml(items) {
       input: md,
       stdio: ["pipe", "ignore", "ignore"],
     });
-    return fs.promises
-      .readFile(tmp)
-      .then(JSZip.loadAsync)
-      .then((z) => z.file("word/document.xml").async("string"))
-      .then((xml) => {
-        const paras = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
-        if (paras.length !== items.length) return items.map(() => null);
-        return paras.map((p, i) => {
-          const re = items[i].display
-            ? /<m:oMathPara>[\s\S]*?<\/m:oMathPara>/
-            : /<m:oMath>[\s\S]*?<\/m:oMath>/;
-          return fixOmml((p.match(re) || [null])[0]);
-        });
-      })
-      .finally(() => fs.rmSync(tmp, { force: true }));
-  } catch {
-    process.stderr.write(
-      "rtlify: pandoc not available, equations will be written as LaTeX text.\n",
-    );
-    return Promise.resolve(items.map(() => null));
+    const zip = await JSZip.loadAsync(await fs.promises.readFile(tmp));
+    const xml = await zip.file("word/document.xml").async("string");
+    const paras = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
+    if (paras.length !== items.length) return null;
+    return paras.map((p, i) => {
+      const re = items[i].display
+        ? /<m:oMathPara>[\s\S]*?<\/m:oMathPara>/
+        : /<m:oMath>[\s\S]*?<\/m:oMath>/;
+      return fixOmml((p.match(re) || [null])[0]);
+    });
+  } catch (err) {
+    if (err.code === "ENOENT" && !pandocMissing) {
+      pandocMissing = true;
+      process.stderr.write(
+        "rtlify: pandoc not available, equations will be written as LaTeX text.\n",
+      );
+    }
+    return null;
+  } finally {
+    fs.rmSync(tmp, { force: true });
   }
+}
+
+// Fast path: all equations in one call. If that fails, convert one by one so that a single
+// bad formula only falls back to LaTeX text instead of taking every equation down with it.
+async function texToOmml(items) {
+  if (!items.length) return [];
+  const batch = await pandocBatch(items);
+  if (batch) return batch;
+  if (pandocMissing || items.length === 1) return items.map(() => null);
+  const out = [];
+  for (const it of items) out.push((await pandocBatch([it]))?.[0] ?? null);
+  return out;
 }
 
 // pandoc (<= 3.1) writes <m:dPr> children out of schema order (endChr before sepChr),
 // which strict OOXML consumers reject. Put them in the order the schema demands.
 const D_ORDER = ["begChr", "sepChr", "endChr", "grow", "shp", "ctrlPr"];
-// <m:nor/> (normal text, from \text{...}) excludes <m:sty/> and <m:scr/> in the schema.
+// <m:rPr> children must be: lit, (nor | scr, sty), brk, aln. pandoc sometimes writes sty before scr,
+// and <m:nor/> (from \\text{...}) excludes sty/scr entirely.
+const R_ORDER = ["lit", "nor", "scr", "sty", "brk", "aln"];
 const fixRPr = (frag) =>
-  frag.replace(/<m:rPr>([\s\S]*?)<\/m:rPr>/g, (m, inner) =>
-    inner.includes("<m:nor")
-      ? `<m:rPr>${inner.replace(/<m:(?:sty|scr)\b[^>]*\/>/g, "")}</m:rPr>`
-      : m,
-  );
+  frag.replace(/<m:rPr>([\s\S]*?)<\/m:rPr>/g, (m, inner) => {
+    let parts = inner.match(/<m:(\w+)\b[^>]*?\/>/g) || [];
+    const name = (p) => p.match(/^<m:(\w+)/)[1];
+    if (parts.some((p) => name(p) === "nor"))
+      parts = parts.filter((p) => !["sty", "scr"].includes(name(p)));
+    parts.sort((a, b) => R_ORDER.indexOf(name(a)) - R_ORDER.indexOf(name(b)));
+    return `<m:rPr>${parts.join("")}</m:rPr>`;
+  });
 const fixOmml = (frag) =>
   frag &&
   fixRPr(frag).replace(/<m:dPr>([\s\S]*?)<\/m:dPr>/g, (_, inner) => {
@@ -115,7 +134,7 @@ export async function buildDocx(markdown, opts = {}) {
   const mathIdx = new Map();
   const reg = (tok, display) => {
     mathIdx.set(tok, maths.length);
-    maths.push({ tex: tok.content, display });
+    maths.push({ tex: tok.content.replace(/\n\s*\n+/g, "\n"), display });
   };
   for (const t of toks) {
     if (t.type === "math_block" || t.type === "math_block_eqno") reg(t, true);
