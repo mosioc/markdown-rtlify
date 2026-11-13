@@ -26,7 +26,8 @@ const CSS = `
 body { font-family: Vazirmatn, "Noto Sans Arabic", Tahoma, system-ui, sans-serif; line-height: 1.8;
        max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
 pre, code, .math, .math-block { direction: ltr; unicode-bidi: isolate; }
-pre { text-align: left; overflow-x: auto; padding: .8rem 1rem; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); }
+pre { text-align: left; overflow-x: auto; padding: .8rem 1rem; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent);
+      line-height: 1.25; white-space: pre; tab-size: 4; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
 code { font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; font-size: .92em; }
 :not(pre) > code { padding: .1em .35em; border-radius: 4px; background: color-mix(in srgb, currentColor 10%, transparent); }
 .math-block { text-align: center; overflow-x: auto; }

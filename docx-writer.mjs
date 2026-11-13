@@ -23,6 +23,7 @@ const {
   ShadingType,
   BorderStyle,
   LevelFormat,
+  LineRuleType,
 } = docx;
 
 const FONT = "Arial";
@@ -373,24 +374,51 @@ export async function buildDocx(markdown, opts = {}) {
         }
         case "fence":
         case "code_block": {
-          // Code is always LTR, left-aligned, monospaced -- one paragraph per line.
-          const lines = t.content.replace(/\n$/, "").split("\n");
-          lines.forEach((ln, li) =>
+          // Code (and ASCII diagrams) are always LTR, left-aligned, monospaced, one paragraph per line.
+          // - tight exact line height so vertical bars of diagrams line up
+          // - identical borders/shading so Word draws ONE padded box around the whole block
+          // - font shrinks for very wide lines instead of wrapping (wrapping destroys ASCII art)
+          // - an unshaded spacer afterwards keeps two consecutive blocks from merging
+          const lines = t.content
+            .replace(/\n$/, "")
+            .split("\n")
+            .map((l) => l.replace(/\t/g, "    "));
+          const maxLen = Math.max(1, ...lines.map((l) => l.length));
+          const pt = Math.min(
+            10,
+            Math.max(7, Math.floor((423 / (0.6 * maxLen)) * 2) / 2),
+          );
+          const size = pt * 2;
+          const edge = {
+            style: BorderStyle.SINGLE,
+            size: 4,
+            color: "D0D0D0",
+            space: 6,
+          };
+          for (const ln of lines) {
             out.push(
               new Paragraph({
                 alignment: AlignmentType.LEFT,
                 bidirectional: false,
                 shading: grey("F2F2F2"),
-                spacing: { after: li === lines.length - 1 ? 160 : 0 },
-                children: [
-                  new TextRun({
-                    text: ln.replace(/\t/g, "    "),
-                    font: mono,
-                    size: 20,
-                  }),
-                ],
+                border: { top: edge, bottom: edge, left: edge, right: edge },
+                indent: { left: 160, right: 160 },
+                spacing: {
+                  before: 0,
+                  after: 0,
+                  line: Math.round(size * 11.5),
+                  lineRule: LineRuleType.EXACT,
+                },
+                children: [new TextRun({ text: ln, font: mono, size })],
               }),
-            ),
+            );
+          }
+          out.push(
+            new Paragraph({
+              spacing: { before: 0, after: 0 },
+              run: { size: 12 },
+              children: [],
+            }),
           );
           break;
         }
