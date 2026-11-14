@@ -26,8 +26,6 @@ const {
   LineRuleType,
 } = docx;
 
-const FONT = "Arial";
-const MONO = "Consolas";
 const CONTENT_WIDTH = 9026; // A4 with 1" margins, in DXA
 const HEADINGS = [
   null,
@@ -38,7 +36,6 @@ const HEADINGS = [
   HeadingLevel.HEADING_5,
   HeadingLevel.HEADING_6,
 ];
-const mono = { ascii: MONO, hAnsi: MONO, cs: MONO, eastAsia: MONO };
 const grey = (fill) => ({ type: ShadingType.CLEAR, fill, color: "auto" });
 
 // ---------- math: TeX -> OMML (Word-native equations) through pandoc ----------
@@ -126,6 +123,25 @@ const findClose = (toks, i) => {
 };
 
 export async function buildDocx(markdown, opts = {}) {
+  // Persian/Arabic text uses the complex-script font (cs), Latin text the ascii/hAnsi font.
+  const fonts = {
+    rtl: "Vazirmatn",
+    latin: "Arial",
+    mono: "Consolas",
+    ...(opts.fonts || {}),
+  };
+  const mono = {
+    ascii: fonts.mono,
+    hAnsi: fonts.mono,
+    cs: fonts.mono,
+    eastAsia: fonts.mono,
+  };
+  const bodyFont = {
+    ascii: fonts.latin,
+    hAnsi: fonts.latin,
+    cs: fonts.rtl,
+    eastAsia: fonts.latin,
+  };
   const md = createRenderer({ ...opts, wrapInline: false });
   const toks = md.parse(normalizeMath(markdown), {});
   const docDir = toks.find((t) => t.type === "inline")?.meta?.dir || "ltr";
@@ -482,7 +498,7 @@ export async function buildDocx(markdown, opts = {}) {
       style: { paragraph: { indent: { start: 720 * (l + 1), hanging: 360 } } },
     }));
   const h = (size) => ({
-    run: { font: FONT, size, bold: true },
+    run: { font: bodyFont, size, bold: true },
     paragraph: { spacing: { before: 280, after: 120 }, keepNext: true },
   });
 
@@ -491,7 +507,7 @@ export async function buildDocx(markdown, opts = {}) {
       default: {
         document: {
           run: {
-            font: FONT,
+            font: bodyFont,
             size: 24,
             language: { value: "en-US", bidirectional: "fa-IR" },
           },

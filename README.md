@@ -46,6 +46,9 @@ node rtlify.mjs input.md --fragment                # HTML body only, to embed in
 | `--fragment` | HTML only. Output just the body, with no `<html>`, CSS or KaTeX stylesheet link. |
 | `--ratio <0..1>` | Share of RTL words needed for a block to be RTL. Default `0.4`. |
 | `--dir auto\|rtl\|ltr` | Force the direction of every block. Default `auto`. |
+| `--font-rtl <name>` | Font for Persian/Arabic/Hebrew text. Default `Vazirmatn`. |
+| `--font-latin <name>` | Font for Latin text. Default `Arial`. |
+| `--font-mono <name>` | Font for code and ASCII diagrams. Default `Consolas`. |
 
 Try it on the included example:
 
@@ -67,11 +70,11 @@ node rtlify.mjs sample.md -o sample.docx
 
 ### HTML output
 
-A standalone page with `dir` on every block, `<bdi>` around language runs, left-to-right code and math, and RTL-aware CSS (logical properties for borders and indents). KaTeX styling is loaded from a CDN, so equations need an internet connection to look right. The font stack is `Vazirmatn, "Noto Sans Arabic", Tahoma, system-ui`; no font files are bundled.
+A standalone page with `dir` on every block, `<bdi>` around language runs, left-to-right code and math, and RTL-aware CSS (logical properties for borders and indents). KaTeX styling is loaded from a CDN, so equations need an internet connection to look right. Fonts follow the `--font-*` options. With the default Vazirmatn, the page also loads it from the jsDelivr CDN, so it renders correctly even where the font is not installed. The body stack is `<rtl font>, <latin font>, "Noto Sans Arabic", Tahoma, system-ui`, so when Vazirmatn is available it also covers Latin text. Code uses `<mono font>, "DejaVu Sans Mono", ui-monospace, Menlo, monospace`.
 
 ### DOCX output
 
-- A4 page, Arial 12pt. Change `FONT` at the top of `docx-writer.mjs` to use another font.
+- A4 page, 12pt. Persian text uses the complex-script font (`--font-rtl`, default Vazirmatn), Latin text uses `--font-latin` (default Arial), and code uses `--font-mono` (default Consolas). Word does not embed fonts, so Vazirmatn must be installed on the machine that opens the file ([free, OFL licence](https://github.com/rastikerdar/vazirmatn)); otherwise Word substitutes another font.
 - RTL paragraphs use Word's bidi setting, and Persian runs carry the RTL flag.
 - Lists use real Word numbering (bullets, `1.` / `a.` / `i.` by level, restarting per list).
 - Code blocks are one left-aligned, monospaced paragraph per line, so indentation is preserved.
@@ -86,8 +89,9 @@ import { convert } from './rtlify.mjs';        // Markdown -> HTML string
 import { buildDocx } from './docx-writer.mjs'; // Markdown -> Buffer (async)
 import { detectDir, normalizeMath, segmentRuns } from './core.mjs';
 
-const html = convert(markdown, { ratio: 0.4, forcedDir: 'auto', fragment: false });
-const buf = await buildDocx(markdown, { ratio: 0.4, forcedDir: 'auto' });
+const fonts = { rtl: 'Vazirmatn', latin: 'Arial', mono: 'Consolas' };
+const html = convert(markdown, { ratio: 0.4, forcedDir: 'auto', fragment: false, fonts });
+const buf = await buildDocx(markdown, { ratio: 0.4, forcedDir: 'auto', fonts });
 ```
 
 ## Project layout
